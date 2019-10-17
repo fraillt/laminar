@@ -24,6 +24,7 @@ pub trait DatagramSocket: Debug {
 // This will be used by a `Connection`.
 #[derive(Debug)]
 struct SocketEventSenderAndConfig<TSocket: DatagramSocket, ConnectionEvent: Debug> {
+    send_buffer: Vec<u8>,
     config: Config,
     socket: TSocket,
     event_sender: Sender<ConnectionEvent>,
@@ -34,6 +35,7 @@ impl<TSocket: DatagramSocket, ConnectionEvent: Debug>
 {
     fn new(config: Config, socket: TSocket, event_sender: Sender<ConnectionEvent>) -> Self {
         Self {
+            send_buffer: vec![0; config.receive_buffer_max_size],
             config,
             socket,
             event_sender,
@@ -44,6 +46,20 @@ impl<TSocket: DatagramSocket, ConnectionEvent: Debug>
 impl<TSocket: DatagramSocket, ConnectionEvent: Debug> ConnectionMessenger<ConnectionEvent>
     for SocketEventSenderAndConfig<TSocket, ConnectionEvent>
 {
+    fn buffer(&mut self) -> &mut [u8] {
+        &mut self.send_buffer
+    }
+
+    /// Sends a packet, and uses data written to `buffer`.
+    fn send_packet_from_buffer(&mut self, address: &SocketAddr, packet_size: usize) {
+        if let Err(err) = self
+            .socket
+            .send_packet(address, &self.send_buffer[..packet_size])
+        {
+            error!("Error occured sending a packet (to {}): {}", address, err)
+        }
+    }
+
     fn config(&self) -> &Config {
         &self.config
     }

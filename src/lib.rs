@@ -30,6 +30,7 @@ pub use self::packet::{DeliveryGuarantee, OrderingGuarantee, Packet};
 pub use self::throughput::ThroughputMonitoring;
 
 mod config;
+pub mod connection;
 mod either;
 mod error;
 mod infrastructure;
