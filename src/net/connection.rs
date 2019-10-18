@@ -1,6 +1,6 @@
-use crate::config::Config;
+use std::{self, collections::HashMap, fmt::Debug, net::SocketAddr, time::Instant};
 
-use std::{self, collections::HashMap, hash::Hash, fmt::Debug, net::SocketAddr, time::Instant};
+use crate::config::Config;
 
 /// Allows connection to send packet, send event and get global configuration.
 pub trait ConnectionMessenger<ConnectionEvent: Debug> {
@@ -19,7 +19,6 @@ pub trait ConnectionMessenger<ConnectionEvent: Debug> {
 /// Allows to implement actual connection.
 /// Defines types of user and connection events that will be used by a connection.
 pub trait Connection: Debug {
-    type Packet: Debug;
     /// Defines a user event type.
     type UserEvent: Debug;
     /// Defines a connection event type.
@@ -30,7 +29,7 @@ pub trait Connection: Debug {
         &mut self,
         time: Instant,
         messenger: &mut impl ConnectionMessenger<Self::ConnectionEvent>,
-        packet: Self::Packet,
+        packet: &[u8],
     );
 
     /// Initial call with a event, when connection is created by accepting user event.
@@ -46,7 +45,7 @@ pub trait Connection: Debug {
         &mut self,
         time: Instant,
         messenger: &mut impl ConnectionMessenger<Self::ConnectionEvent>,
-        packet: Self::Packet,
+        packet: &[u8],
     );
 
     /// Processes a received event and send a packet.
@@ -78,20 +77,16 @@ pub trait ConnectionFactory: Debug {
     /// An actual connection type that is created by a factory.
     type Connection: Connection;
 
-    /// Identifies an actual connection.
-    type ConnectionIdentity: Hash + Eq;
-
-    // non instance method
-    fn parse_packet(address: SocketAddr, payload:&[u8]) -> (Self::ConnectionIdentity, <Self::Connection as Connection>::Packet);
-
     /// Provides a mapping from user event to an actual physical address.
     /// If `None` is returned, event is ignored. If address doesn't exists in the active connections list, then `should_accept_local` will be invoked.
     /// Being factory method, it supports connections that are not necessary identified by `SocketAddr`.
     /// E.g. QUIC use ConnectionId to identify the connection.
-    fn connection_from_user_event(
-        &self,
-        event: &<Self::Connection as Connection>::UserEvent,
-    ) -> Option<Self::ConnectionIdentity>
+    fn address_from_user_event<'s, 'a>(
+        &'s self,
+        event: &'a <Self::Connection as Connection>::UserEvent,
+    ) -> Option<&'a SocketAddr>
+    where
+        's: 'a;
 
     /// Determines if remote connection can be accepted.
     /// If connection is accepted, then `after_remote_accepted` will be invoked on it.
