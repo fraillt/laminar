@@ -70,6 +70,12 @@ pub trait Connection: Debug {
         time: Instant,
         messenger: &mut impl ConnectionMessenger<Self::ConnectionEvent>,
     );
+
+    fn should_discard(
+        &mut self,
+        time: Instant,
+        messenger: &mut impl ConnectionMessenger<Self::ConnectionEvent>,
+    ) -> bool;
 }
 
 /// Decides when to create and destroy connections, and provides a way for `ConnectionManager` to get connection from an user event.
@@ -77,41 +83,24 @@ pub trait ConnectionFactory: Debug {
     /// An actual connection type that is created by a factory.
     type Connection: Connection;
 
-    /// Provides a mapping from user event to an actual physical address.
-    /// If `None` is returned, event is ignored. If address doesn't exists in the active connections list, then `should_accept_local` will be invoked.
-    /// Being factory method, it supports connections that are not necessary identified by `SocketAddr`.
-    /// E.g. QUIC use ConnectionId to identify the connection.
-    fn address_from_user_event<'s, 'a>(
-        &'s self,
-        event: &'a <Self::Connection as Connection>::UserEvent,
-    ) -> Option<&'a SocketAddr>
-    where
-        's: 'a;
-
-    /// Determines if remote connection can be accepted.
-    /// If connection is accepted, then `after_remote_accepted` will be invoked on it.
-    fn should_accept_remote(
+    fn process_packet(
         &mut self,
         time: Instant,
-        address: SocketAddr,
+        messenger: &mut impl ConnectionMessenger<<Self::Connection as Connection>::ConnectionEvent>,
+        address: &SocketAddr,
         data: &[u8],
-    ) -> Option<Self::Connection>;
+    );
 
-    /// Determines if local connection can be accepted.
-    /// If connection is accepted, then `after_remote_accepted` will be invoked on it.
-    fn should_accept_local(
+    fn process_event(
         &mut self,
         time: Instant,
-        address: SocketAddr,
-        event: &<Self::Connection as Connection>::UserEvent,
-    ) -> Option<Self::Connection>;
+        messenger: &mut impl ConnectionMessenger<<Self::Connection as Connection>::ConnectionEvent>,
+        event: <Self::Connection as Connection>::UserEvent,
+    );
 
-    /// This allows to implement all sorts of things, a few examples include:
-    /// * Banning a connection.
-    /// * Disconnect a connection, if there are too many connections in "connecting" state.
-    fn update(&mut self, time: Instant, connections: &mut HashMap<SocketAddr, Self::Connection>);
-
-    /// Determines if connection should be discarded.
-    /// If connection is discarded, then `before_discarded` will be invoked on it.
-    fn should_discard(&mut self, time: Instant, connection: &Self::Connection) -> bool;
+    fn update_connections(
+        &mut self,
+        time: Instant,
+        messenger: &mut impl ConnectionMessenger<<Self::Connection as Connection>::ConnectionEvent>,
+    );
 }

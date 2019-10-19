@@ -1,5 +1,5 @@
 use crate::config::Config;
-use crate::net::{Connection, ConnectionFactory};
+use crate::net::{Connection, ConnectionFactory, ConnectionMessenger};
 use crate::packet::Packet;
 
 use super::{ConnectionImpl, VirtualConnection};
@@ -49,53 +49,80 @@ impl FactoryImpl {
 }
 
 impl ConnectionFactory for FactoryImpl {
+    fn process_packet(
+        &mut self,
+        time: Instant,
+        messenger: &mut impl ConnectionMessenger<<Self::Connection as Connection>::ConnectionEvent>,
+        address: &SocketAddr,
+        data: &[u8],
+    ) {
+        // TODO implement
+    }
+
+    fn process_event(
+        &mut self,
+        time: Instant,
+        messenger: &mut impl ConnectionMessenger<<Self::Connection as Connection>::ConnectionEvent>,
+        event: <Self::Connection as Connection>::UserEvent,
+    ) {
+        // TODO implement
+    }
+
+    fn update_connections(
+        &mut self,
+        time: Instant,
+        messenger: &mut impl ConnectionMessenger<<Self::Connection as Connection>::ConnectionEvent>,
+    ) {
+        // TODO implement
+    }
+
     type Connection = ConnectionImpl;
 
-    fn address_from_user_event<'s, 'a>(&'s self, event: &'a Packet) -> Option<&'a SocketAddr>
-    where
-        's: 'a,
-    {
-        Some(&event.addr)
-    }
+    // fn address_from_user_event<'s, 'a>(&'s self, event: &'a Packet) -> Option<&'a SocketAddr>
+    // where
+    //     's: 'a,
+    // {
+    //     Some(&event.addr)
+    // }
 
-    /// Accepts connection if not banned.
-    fn should_accept_remote(
-        &mut self,
-        time: Instant,
-        address: SocketAddr,
-        _data: &[u8],
-    ) -> Option<Self::Connection> {
-        self.should_accept(time, address, Some(time + NON_ACCEPT_TIMEOUT))
-    }
+    // /// Accepts connection if not banned.
+    // fn should_accept_remote(
+    //     &mut self,
+    //     time: Instant,
+    //     address: SocketAddr,
+    //     _data: &[u8],
+    // ) -> Option<Self::Connection> {
+    //     self.should_accept(time, address, Some(time + NON_ACCEPT_TIMEOUT))
+    // }
 
-    /// Accepts connection if not banned.
-    fn should_accept_local(
-        &mut self,
-        time: Instant,
-        address: SocketAddr,
-        _event: &<Self::Connection as Connection>::UserEvent,
-    ) -> Option<Self::Connection> {
-        self.should_accept(time, address, None)
-    }
+    // /// Accepts connection if not banned.
+    // fn should_accept_local(
+    //     &mut self,
+    //     time: Instant,
+    //     address: SocketAddr,
+    //     _event: &<Self::Connection as Connection>::UserEvent,
+    // ) -> Option<Self::Connection> {
+    //     self.should_accept(time, address, None)
+    // }
 
-    /// Removes addresses from ban list.
-    fn update(&mut self, time: Instant, _connections: &mut HashMap<SocketAddr, Self::Connection>) {
-        self.temporary_banned
-            .retain(|_, banned_until| *banned_until > time);
-    }
+    // /// Removes addresses from ban list.
+    // fn update(&mut self, time: Instant, _connections: &mut HashMap<SocketAddr, Self::Connection>) {
+    //     self.temporary_banned
+    //         .retain(|_, banned_until| *banned_until > time);
+    // }
 
-    /// Discards connection and ban it if it was banned due to non accepted timeout.
-    fn should_discard(&mut self, time: Instant, connection: &Self::Connection) -> bool {
-        if connection
-            .non_accepted_timeout
-            .map_or(false, |timeout| timeout < time)
-        {
-            self.temporary_banned
-                .insert(connection.conn.remote_address, time + TEMPORARY_BAN_TIMEOUT);
-            return true;
-        }
-        connection.conn.should_drop(time)
-    }
+    // /// Discards connection and ban it if it was banned due to non accepted timeout.
+    // fn should_discard(&mut self, time: Instant, connection: &Self::Connection) -> bool {
+    //     if connection
+    //         .non_accepted_timeout
+    //         .map_or(false, |timeout| timeout < time)
+    //     {
+    //         self.temporary_banned
+    //             .insert(connection.conn.remote_address, time + TEMPORARY_BAN_TIMEOUT);
+    //         return true;
+    //     }
+    //     connection.conn.should_drop(time)
+    // }
 }
 
 #[cfg(test)]

@@ -124,14 +124,7 @@ impl<TSocket: DatagramSocket, TConnectionFactory: ConnectionFactory>
                 .receive_packet(self.receive_buffer.as_mut())
             {
                 Ok((payload, address)) => {
-                    if let Some(conn) = self.connections.get_mut(&address) {
-                        conn.process_packet(time, messenger, payload);
-                    } else if let Some(mut conn) =
-                        factory.should_accept_remote(time, address, payload)
-                    {
-                        conn.after_remote_accepted(time, messenger, payload);
-                        self.connections.insert(address, conn);
-                    }
+                    factory.process_packet(time, messenger, &address, payload)
                 }
                 Err(e) => {
                     if e.kind() != std::io::ErrorKind::WouldBlock {
@@ -148,36 +141,10 @@ impl<TSocket: DatagramSocket, TConnectionFactory: ConnectionFactory>
 
         // now grab all the waiting packets and send them
         while let Ok(event) = self.user_event_receiver.try_recv() {
-            // get or create connection
-            if let Some(address) = factory.address_from_user_event(&event) {
-                if let Some(conn) = self.connections.get_mut(address) {
-                    conn.process_event(time, messenger, event);
-                } else {
-                    let address = *address;
-                    if let Some(mut conn) = factory.should_accept_local(time, address, &event) {
-                        conn.after_local_accepted(time, messenger, event);
-                        self.connections.insert(address, conn);
-                    }
-                }
-            }
+            factory.process_event(time, messenger, event);
         }
 
-        // update all connections
-        for conn in self.connections.values_mut() {
-            conn.update(time, messenger);
-        }
-
-        // update a factory
-        factory.update(time, &mut self.connections);
-
-        // iterate through all connections and remove those that should be discarded
-        self.connections.retain(|_, conn| {
-            let discard = factory.should_discard(time, conn);
-            if discard {
-                conn.before_discarded(time, messenger);
-            }
-            !discard
-        });
+        factory.update_connections(time, messenger);
     }
 
     /// Returns a handle to the event sender which provides a thread-safe way to enqueue user events

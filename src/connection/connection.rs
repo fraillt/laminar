@@ -38,11 +38,22 @@ const SEND_INTERVAL_DURING_HANDSHAKE: Duration = Duration::from_millis(100); // 
 
 // todo better name
 #[derive(Debug)]
-struct Conn {
+pub struct Conn {
     connections: Vec<ConnectionData>, // only one connection can be in connected state, and it will always be the first in vector
     handshake_last_sent: Instant,
     address: SocketAddr,
     destroy_reason: Option<DestroyReason>,
+}
+
+impl Conn {
+    pub fn new(address: SocketAddr, time: Instant) -> Self {
+        Self {
+            connections: Vec::default(),
+            handshake_last_sent: time,
+            address,
+            destroy_reason: None,
+        }
+    }
 }
 
 impl Connection for Conn {
@@ -249,6 +260,15 @@ impl Connection for Conn {
             .take()
             .expect("Destroy reason must be set, if we got here.");
         messenger.send_event((self.address, ConnectionEvent::Destroyed(reason)));
+    }
+
+    fn should_discard(
+        &mut self,
+        time: Instant,
+        messenger: &mut impl ConnectionMessenger<Self::ConnectionEvent>,
+    ) -> bool {
+        // TODO implement
+        false
     }
 }
 

@@ -156,6 +156,15 @@ impl Connection for ConnectionImpl {
     ) {
         messenger.send_event(SocketEvent::Timeout(self.conn.remote_address));
     }
+
+    fn should_discard(
+        &mut self,
+        time: Instant,
+        messenger: &mut impl ConnectionMessenger<Self::ConnectionEvent>,
+    ) -> bool {
+        // TODO implement
+        false
+    }
 }
 
 // Sends multiple outgoing packets.
