@@ -299,3 +299,213 @@ fn accept_new_connection(client_salt: u64, time: Instant) -> ConnectionData {
         }),
     }
 }
+
+#[derive(Debug)]
+struct ConnectedState {
+    identity: u64,
+    client_salt: u64,
+    server_salt: u64,
+}
+
+#[derive(Debug)]
+struct HandshakingState {
+    remote_salt: u64,
+    current_state: PacketHeaderType<'static>,
+}
+
+#[derive(Debug)]
+pub struct AddressConnection {
+    address: SocketAddr,
+    active: Option<ConnectedState>,
+    pending: Vec<HandshakingState>,
+    packet_to_send: Option<CurrentPacketToSend>,
+    destroy_reason: Option<DestroyReason>,
+}
+
+impl AddressConnection {
+    pub fn new(address: SocketAddr) -> Self {
+        Self {
+            address,
+            active: None,
+            pending: Vec::default(),
+            packet_to_send: None,
+        }
+    }
+
+    pub fn process_payload(
+        &self,
+        identity: u64,
+        packet: PacketInfo,
+        messenger: &mut impl ConnectionMessenger<(SocketAddr, ConnectionEvent)>,
+    ) {
+        if self.is_connected(identity) {
+            // todo packet event to user
+        }
+    }
+
+    pub fn process_disconnect(
+        &mut self,
+        identity: u64,
+        messenger: &mut impl ConnectionMessenger<(SocketAddr, ConnectionEvent)>,
+    ) {
+        self.disconnect(messenger, DisconnectReason::ClosedByRemoteHost);
+    }
+
+    pub fn process_connection_request(
+        &mut self,
+        identity: u64,
+        messenger: &mut impl ConnectionMessenger<(SocketAddr, ConnectionEvent)>,
+    ) {
+        // let server_salt = rand::thread_rng().next_u64();
+        // conn.pending.push(HandshakingState {
+        //     remote_salt: header.identity,
+        //     current_state: PacketHeaderType::Challenge(server_salt),
+        // });
+    }
+
+    pub fn process_challenge_request(
+        &mut self,
+        identity: u64,
+        server_salt: u64,
+        messenger: &mut impl ConnectionMessenger<(SocketAddr, ConnectionEvent)>,
+    ) {
+    }
+
+    pub fn process_challenge_response(
+        &mut self,
+        identity: u64,
+        messenger: &mut impl ConnectionMessenger<(SocketAddr, ConnectionEvent)>,
+    ) {
+        if let Some(active) = self.active {
+            if active.identity == identity {
+                self.send_packet(identity, PacketHeaderType::ConnectionAccepted, messenger);
+            }
+        } else {
+            // 
+        }
+    }
+    pub fn process_connection_denied(
+        &mut self,
+        identity: u64,
+        messenger: &mut impl ConnectionMessenger<(SocketAddr, ConnectionEvent)>,
+    ) {
+        if self.active.is_none() && self.pending.len() == 1 && self.pending[0].remote_salt == identity {
+            self.pending.clear();
+            self.packet_to_send = None;
+            self.destroy_reason = Some(DestroyReason::Declined);
+        }
+    }
+
+    pub fn user_packet(
+        &mut self,
+        packet: Packet,
+        messenger: &mut impl ConnectionMessenger<(SocketAddr, ConnectionEvent)>,
+    ) {
+        if let Some(active) = &self.active {
+            let packet = PacketInfo::user_packet(
+                packet.payload().as_ref(),
+                packet.delivery_guarantee(),
+                packet.order_guarantee(),
+            );
+            self.send_packet(
+                active.identity,
+                PacketHeaderType::Payload(packet),
+                messenger,
+            );
+        }
+    }
+
+    /// Initiates a new connection if not already connected, by removing all previous handshaking state.
+    pub fn user_connect(
+        &mut self,
+        messenger: &mut impl ConnectionMessenger<(SocketAddr, ConnectionEvent)>,
+    ) {
+        if self.active.is_none() {
+            let salt = rand::thread_rng().next_u64();
+            self.pending.clear();
+            self.pending.push(HandshakingState {
+                remote_salt: salt,
+                current_state: PacketHeaderType::ConnectionRequest,
+            });
+
+            self.packet_to_send = Some(CurrentPacketToSend {
+                send_packet: PacketHeaderType::ConnectionRequest,
+                remote_identity: salt,
+                send_at: messenger.time(),
+                send_times_left: 10,
+            });
+        }
+    }
+
+    pub fn user_disconnect(
+        &mut self,
+        messenger: &mut impl ConnectionMessenger<(SocketAddr, ConnectionEvent)>,
+    ) {
+        self.disconnect(messenger, DisconnectReason::ClosedByLocalHost);
+    }
+
+    pub fn should_drop(
+        &self,
+        messenger: &mut impl ConnectionMessenger<(SocketAddr, ConnectionEvent)>,
+    ) -> bool {
+        if let Some(reason) = self.destroy_reason {
+            if self.packet_to_send.is_none() {
+                messenger.send_event((self.address, ConnectionEvent::Destroyed(reason)));
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn update(
+        &mut self,
+        messenger: &mut impl ConnectionMessenger<(SocketAddr, ConnectionEvent)>,
+    ) {
+        if self.packet_to_send.is_some() {
+            let mut packet = self.packet_to_send.as_mut().unwrap(); // we can unwrap, we checked it before
+            if messenger.time() <= packet.send_at {
+                self.send_packet(
+                    packet.remote_identity,
+                    packet.send_packet.clone(),
+                    messenger,
+                );
+                packet.send_at = messenger.time() + SEND_INTERVAL_DURING_HANDSHAKE;
+                if packet.send_times_left > 1 {
+                    packet.send_times_left = packet.send_times_left - 1;
+                } else {
+                    self.packet_to_send = None;
+                }
+            }
+        }
+    }
+
+    fn send_packet(
+        &self,
+        identity: u64,
+        packet: PacketHeaderType,
+        messenger: &mut impl ConnectionMessenger<(SocketAddr, ConnectionEvent)>,
+    ) {
+        let header = PacketHeader { identity, packet };
+        let written = header
+            .into_bytes(messenger.buffer())
+            .expect("Do not fail, when ");
+        messenger.send_packet_from_buffer(&self.address, written);
+    }
+
+    fn disconnect(
+        &mut self,
+        messenger: &mut impl ConnectionMessenger<(SocketAddr, ConnectionEvent)>,
+        reason: DisconnectReason,
+    ) {
+        if let Some(state) = self.active.take() {
+            self.pending.clear();
+            self.packet_to_send = Some(CurrentPacketToSend {
+                send_packet: PacketHeaderType::Disconnect,
+                remote_identity: state.identity,
+                send_at: messenger.time(),
+                send_times_left: 10,
+            });
+            messenger.send_event((self.address, ConnectionEvent::Disconnected(reason)));
+        }
+    }
+}

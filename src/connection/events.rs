@@ -24,6 +24,7 @@ pub enum DestroyReason {
     ConnectionError(String),
     /// After `Config.idle_connection_timeout` connection had no activity.
     Timeout,
+    Declined,
     /// If there are too many non-acked packets in flight `Config.max_packets_in_flight`.
     TooManyPacketsInFlight,
     /// When `ConnectionManager` changed to `Disconnected` state.
@@ -35,7 +36,7 @@ pub enum DestroyReason {
 pub enum DisconnectReason {
     /// Disconnect was initiated by the local or remote host
     ClosedByLocalHost,
-    ClosedByRemoteHost,
+    ClosedByRemoteHost,    
     /// Socket manager decided to destroy connection for provided reason
     Destroying(DestroyReason),
 }

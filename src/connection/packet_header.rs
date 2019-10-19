@@ -18,9 +18,11 @@ const HEADER_SIZE: usize = 15;
 #[derive(Debug, PartialEq, Clone)]
 pub enum PacketHeaderType<'a> {
     Disconnect,
+    ConnectionDenied,
     ConnectionRequest,
     Challenge(u64),
     ChallengeResponse,
+    ConnectionAccepted,
     Payload(PacketInfo<'a>),
 }
 
@@ -58,20 +60,21 @@ impl<'a> PacketHeader<'a> {
         let payload: &[u8] = &value[rdr.position() as usize..];
         let packet = match packet_type {
             0 => PacketHeaderType::Disconnect,
-            1 => {
+            1 => PacketHeaderType::ConnectionDenied,
+            2 => {
                 if *ZERO_BUFFER != payload {
                     return Err(ErrorKind::DecodingError(DecodingErrorKind::PacketType));
                 }
                 PacketHeaderType::ConnectionRequest
             }
-            2 => PacketHeaderType::Challenge(rdr.read_u64::<LittleEndian>()?),
-            3 => {
+            3 => PacketHeaderType::Challenge(rdr.read_u64::<LittleEndian>()?),
+            4 => {
                 if *ZERO_BUFFER != payload {
                     return Err(ErrorKind::DecodingError(DecodingErrorKind::PacketType));
                 }
                 PacketHeaderType::ChallengeResponse
             }
-            4 => PacketHeaderType::Payload(get_packet_info(packet_type_byte, payload)?),
+            5 => PacketHeaderType::Payload(get_packet_info(packet_type_byte, payload)?),
             _ => return Err(ErrorKind::DecodingError(DecodingErrorKind::PacketType)),
         };
         Ok(Self { identity, packet })
@@ -103,17 +106,18 @@ impl<'a> PacketHeader<'a> {
 
         let packet_type = match &self.packet {
             PacketHeaderType::Disconnect => 0,
+            PacketHeaderType::ConnectionDenied => 1,
             PacketHeaderType::ConnectionRequest => {
                 buf.write(ZERO_BUFFER.as_ref())?;
-                1
+                2
             }
             PacketHeaderType::Challenge(server_salt) => {
                 buf.write_u64::<LittleEndian>(*server_salt)?;
-                2
+                3
             }
             PacketHeaderType::ChallengeResponse => {
                 buf.write(ZERO_BUFFER.as_ref())?;
-                3
+                4
             }
             PacketHeaderType::Payload(packet_info) => {
                 buf.write(packet_info.payload)?;
@@ -133,7 +137,7 @@ impl<'a> PacketHeader<'a> {
                         packet_info.delivery, packet_info.ordering
                     ),
                 };
-                4 | (reliability_byte << 3) | (fragment_byte << 7)
+                5 | (reliability_byte << 3) | (fragment_byte << 7)
             }
         };
         // we must be sure, that write buffer must be always bigger

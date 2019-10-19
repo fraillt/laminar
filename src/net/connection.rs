@@ -4,6 +4,7 @@ use crate::config::Config;
 
 /// Allows connection to send packet, send event and get global configuration.
 pub trait ConnectionMessenger<ConnectionEvent: Debug> {
+    fn time(&self) -> Instant;
     /// Returns a buffer that can be used to fill data, when using `send_packet_from_buffer` function.
     fn buffer(&mut self) -> &mut [u8];
     /// Sends a packet, and uses data written to `buffer`.
@@ -80,13 +81,15 @@ pub trait Connection: Debug {
 
 /// Decides when to create and destroy connections, and provides a way for `ConnectionManager` to get connection from an user event.
 pub trait ConnectionFactory: Debug {
-    /// An actual connection type that is created by a factory.
-    type Connection: Connection;
+    /// Defines a user event type.
+    type UserEvent: Debug;
+    /// Defines a connection event type.
+    type ConnectionEvent: Debug;
 
     fn process_packet(
         &mut self,
         time: Instant,
-        messenger: &mut impl ConnectionMessenger<<Self::Connection as Connection>::ConnectionEvent>,
+        messenger: &mut impl ConnectionMessenger<Self::ConnectionEvent>,
         address: &SocketAddr,
         data: &[u8],
     );
@@ -94,13 +97,13 @@ pub trait ConnectionFactory: Debug {
     fn process_event(
         &mut self,
         time: Instant,
-        messenger: &mut impl ConnectionMessenger<<Self::Connection as Connection>::ConnectionEvent>,
-        event: <Self::Connection as Connection>::UserEvent,
+        messenger: &mut impl ConnectionMessenger<Self::ConnectionEvent>,
+        event: Self::UserEvent,
     );
 
     fn update_connections(
         &mut self,
         time: Instant,
-        messenger: &mut impl ConnectionMessenger<<Self::Connection as Connection>::ConnectionEvent>,
+        messenger: &mut impl ConnectionMessenger<Self::ConnectionEvent>,
     );
 }
