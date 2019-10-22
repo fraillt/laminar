@@ -9,19 +9,19 @@ use std::{
 use crate::{
     config::Config,
     error::Result,
-    net::{ConnectionManager, DatagramSocket, SocketWithConditioner},
+    net::{DatagramSocket, SocketWithConditioner, SocketWithConnections},
     packet::Packet,
 };
 
 #[cfg(feature = "tester")]
 use crate::net::LinkConditioner;
 
-use super::{FactoryImpl, SocketEvent};
+use super::{ManagerImpl, SocketEvent};
 
 /// A reliable UDP socket implementation with configurable reliability and ordering guarantees.
 #[derive(Debug)]
 pub struct Socket {
-    handler: ConnectionManager<SocketWithConditioner, FactoryImpl>,
+    handler: SocketWithConnections<SocketWithConditioner, ManagerImpl>,
 }
 
 impl Socket {
@@ -57,9 +57,9 @@ impl Socket {
 
     fn bind_internal(socket: UdpSocket, config: Config) -> Result<Self> {
         Ok(Socket {
-            handler: ConnectionManager::new(
+            handler: SocketWithConnections::new(
                 SocketWithConditioner::new(socket, config.blocking_mode)?,
-                FactoryImpl::new(config.clone()),
+                ManagerImpl::new(config.clone()),
                 config,
             ),
         })

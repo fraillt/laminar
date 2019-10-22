@@ -16,8 +16,6 @@ use crate::packet::{DeliveryGuarantee, OrderingGuarantee, PacketType};
 ///
 /// You are able to send packets with the above reliability types.
 pub struct Packet {
-    /// The endpoint from where it came.
-    pub(crate) addr: SocketAddr,
     /// The raw payload of the packet.
     payload: Box<[u8]>,
     /// Defines on how the packet will be delivered.
@@ -29,13 +27,11 @@ pub struct Packet {
 impl Packet {
     /// Creates a new packet by passing the receiver, data, and guarantees on how this packet should be delivered.
     pub(crate) fn new(
-        addr: SocketAddr,
         payload: Box<[u8]>,
         delivery: DeliveryGuarantee,
         ordering: OrderingGuarantee,
     ) -> Packet {
         Packet {
-            addr,
             payload,
             delivery,
             ordering,
@@ -53,9 +49,8 @@ impl Packet {
     /// |       Any       |        Yes         |      No          |      No              |       No        |
     ///
     /// Basically just bare UDP. The packet may or may not be delivered.
-    pub fn unreliable(addr: SocketAddr, payload: Vec<u8>) -> Packet {
+    pub fn unreliable(payload: Vec<u8>) -> Packet {
         Packet {
-            addr,
             payload: payload.into_boxed_slice(),
             delivery: DeliveryGuarantee::Unreliable,
             ordering: OrderingGuarantee::None,
@@ -73,13 +68,8 @@ impl Packet {
     /// |    Any + old    |        No          |      Sequenced   |      No              |       No        |
     ///
     /// Basically just bare UDP, free to be dropped, but has some sequencing to it so that only the newest packets are kept.
-    pub fn unreliable_sequenced(
-        addr: SocketAddr,
-        payload: Vec<u8>,
-        stream_id: Option<u8>,
-    ) -> Packet {
+    pub fn unreliable_sequenced(payload: Vec<u8>, stream_id: Option<u8>) -> Packet {
         Packet {
-            addr,
             payload: payload.into_boxed_slice(),
             delivery: DeliveryGuarantee::Unreliable,
             ordering: OrderingGuarantee::Sequenced(stream_id),
@@ -96,9 +86,8 @@ impl Packet {
     /// |       No        |      No            |      No          |      Yes             |       Yes       |
     ///
     /// Basically this is almost TCP without ordering of packets.
-    pub fn reliable_unordered(addr: SocketAddr, payload: Vec<u8>) -> Packet {
+    pub fn reliable_unordered(payload: Vec<u8>) -> Packet {
         Packet {
-            addr,
             payload: payload.into_boxed_slice(),
             delivery: DeliveryGuarantee::Reliable,
             ordering: OrderingGuarantee::None,
@@ -119,9 +108,8 @@ impl Packet {
     ///
     /// # Remark
     /// - When `stream_id` is specified as `None` the default stream will be used; if you are not sure what this is you can leave it at `None`.
-    pub fn reliable_ordered(addr: SocketAddr, payload: Vec<u8>, stream_id: Option<u8>) -> Packet {
+    pub fn reliable_ordered(payload: Vec<u8>, stream_id: Option<u8>) -> Packet {
         Packet {
-            addr,
             payload: payload.into_boxed_slice(),
             delivery: DeliveryGuarantee::Reliable,
             ordering: OrderingGuarantee::Ordered(stream_id),
@@ -143,9 +131,8 @@ impl Packet {
     ///
     /// # Remark
     /// - When `stream_id` is specified as `None` the default stream will be used; if you are not sure what this is you can leave it at `None`.
-    pub fn reliable_sequenced(addr: SocketAddr, payload: Vec<u8>, stream_id: Option<u8>) -> Packet {
+    pub fn reliable_sequenced(payload: Vec<u8>, stream_id: Option<u8>) -> Packet {
         Packet {
-            addr,
             payload: payload.into_boxed_slice(),
             delivery: DeliveryGuarantee::Reliable,
             ordering: OrderingGuarantee::Sequenced(stream_id),
@@ -155,15 +142,6 @@ impl Packet {
     /// Returns the payload of this packet.
     pub fn payload(&self) -> &[u8] {
         &self.payload
-    }
-
-    /// Returns the address of this packet.
-    ///
-    /// # Remark
-    /// Could be both the receiving endpoint or the one to send this packet to.
-    /// This depends whether it is a packet that has been received or one that needs to be send.
-    pub fn addr(&self) -> SocketAddr {
-        self.addr
     }
 
     /// Returns the [`DeliveryGuarantee`](./enum.DeliveryGuarantee.html) of this packet.

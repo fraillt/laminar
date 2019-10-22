@@ -4,14 +4,8 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use crc;
 use lazy_static::lazy_static;
 
-use crate::error::{DecodingErrorKind, ErrorKind, PacketErrorKind, Result};
-use crate::packet::{DeliveryGuarantee, OrderingGuarantee, PacketInfo, PacketType};
+use crate::error::{DecodingErrorKind, ErrorKind, Result};
 use crate::protocol_version::ProtocolVersion;
-
-// save some bytes, instead of having 3 bytes, put everything in 1 byte.
-const PACKET_TYPE_MASK: u8 = 0b00000111u8;
-const RELIABILITY_TYPE_MASK: u8 = 0b01111000u8;
-const FRAGMENTATION_TYPE_MASK: u8 = 0b10000000u8;
 
 const HEADER_SIZE: usize = 15;
 
@@ -23,13 +17,13 @@ pub enum PacketHeaderType<'a> {
     Challenge(u64),
     ChallengeResponse,
     ConnectionAccepted,
-    Payload(PacketInfo<'a>),
+    Payload(&'a [u8]),
 }
 
 /// Packet header structure.
 /// * [0-1] - Protocol version.
 /// * [2-5] - CRC32 (range [6..]).
-/// * 6 - Packet type (same byte is used to store reliability and fragmentation info).
+/// * 6 - Packet type.
 /// * [7..] - Packet related information.
 #[derive(Debug)]
 pub struct PacketHeader<'a> {
@@ -54,9 +48,8 @@ impl<'a> PacketHeader<'a> {
         if checksum != crc::crc32::checksum_koopman(&value[6..]) {
             return Err(ErrorKind::ProtocolVersionMismatch);
         }
-        let packet_type_byte = rdr.read_u8()?;
+        let packet_type = rdr.read_u8()?;
         let identity = rdr.read_u64::<LittleEndian>()?;
-        let packet_type = packet_type_byte & PACKET_TYPE_MASK;
         let payload: &[u8] = &value[rdr.position() as usize..];
         let packet = match packet_type {
             0 => PacketHeaderType::Disconnect,
@@ -74,7 +67,8 @@ impl<'a> PacketHeader<'a> {
                 }
                 PacketHeaderType::ChallengeResponse
             }
-            5 => PacketHeaderType::Payload(get_packet_info(packet_type_byte, payload)?),
+            5 => PacketHeaderType::ConnectionAccepted,
+            6 => PacketHeaderType::Payload(payload),
             _ => return Err(ErrorKind::DecodingError(DecodingErrorKind::PacketType)),
         };
         Ok(Self { identity, packet })
@@ -119,63 +113,15 @@ impl<'a> PacketHeader<'a> {
                 buf.write(ZERO_BUFFER.as_ref())?;
                 4
             }
-            PacketHeaderType::Payload(packet_info) => {
-                buf.write(packet_info.payload)?;
-                let fragment_byte = if packet_info.packet_type == PacketType::Fragment {
-                    1
-                } else {
-                    0
-                };
-                let reliability_byte: u8 = match (packet_info.delivery, packet_info.ordering) {
-                    (DeliveryGuarantee::Unreliable, OrderingGuarantee::None) => 0,
-                    (DeliveryGuarantee::Unreliable, OrderingGuarantee::Sequenced(_)) => 1,
-                    (DeliveryGuarantee::Reliable, OrderingGuarantee::None) => 2,
-                    (DeliveryGuarantee::Reliable, OrderingGuarantee::Sequenced(_)) => 3,
-                    (DeliveryGuarantee::Reliable, OrderingGuarantee::Ordered(_)) => 4,
-                    _ => panic!(
-                        "Unsupported reliability combination {:?}-{:?}",
-                        packet_info.delivery, packet_info.ordering
-                    ),
-                };
-                5 | (reliability_byte << 3) | (fragment_byte << 7)
+            PacketHeaderType::ConnectionAccepted => 5,
+            PacketHeaderType::Payload(payload) => {
+                buf.write(payload)?;
+                6
             }
         };
         // we must be sure, that write buffer must be always bigger
         Ok((packet_type, buff_size - buf.len()))
     }
-}
-
-fn get_packet_info(type_byte: u8, payload: &[u8]) -> Result<PacketInfo> {
-    let reliability_type = (type_byte & RELIABILITY_TYPE_MASK) >> 3;
-    let fragmentation_type = (type_byte & FRAGMENTATION_TYPE_MASK) >> 7;
-    let packet_type = if fragmentation_type == 0 {
-        PacketType::Packet
-    } else {
-        PacketType::Fragment
-    };
-    let (delivery, ordering) = match reliability_type {
-        0 => (DeliveryGuarantee::Unreliable, OrderingGuarantee::None),
-        1 => (
-            DeliveryGuarantee::Unreliable,
-            OrderingGuarantee::Sequenced(None),
-        ),
-        2 => (DeliveryGuarantee::Reliable, OrderingGuarantee::None),
-        3 => (
-            DeliveryGuarantee::Reliable,
-            OrderingGuarantee::Sequenced(None),
-        ),
-        4 => (
-            DeliveryGuarantee::Reliable,
-            OrderingGuarantee::Ordered(None),
-        ),
-        _ => return Err(ErrorKind::DecodingError(DecodingErrorKind::PacketType)),
-    };
-    Ok(PacketInfo {
-        packet_type,
-        payload,
-        delivery,
-        ordering,
-    })
 }
 
 #[cfg(test)]

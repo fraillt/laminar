@@ -1,6 +1,6 @@
 use crate::{
     error::{ErrorKind, Result},
-    net::{Connection, ConnectionMessenger, VirtualConnection},
+    net::{ContextWithSender, VirtualConnection},
     packet::{DeliveryGuarantee, OutgoingPackets, Packet, PacketInfo},
 };
 
@@ -27,17 +27,12 @@ impl std::fmt::Debug for ConnectionImpl {
     }
 }
 
-impl Connection for ConnectionImpl {
-    /// Defines a user event type.
-    type UserEvent = Packet;
-    /// Defines a connection event type.
-    type ConnectionEvent = SocketEvent;
-
+impl ConnectionImpl {
     /// Initial call with a payload, when connection is created by accepting remote packet.
     fn after_remote_accepted(
         &mut self,
         time: Instant,
-        messenger: &mut impl ConnectionMessenger<Self::ConnectionEvent>,
+        messenger: &mut impl ContextWithSender<SocketEvent>,
         payload: &[u8],
     ) {
         // emit connect event, for remote connection
@@ -49,8 +44,8 @@ impl Connection for ConnectionImpl {
     fn after_local_accepted(
         &mut self,
         time: Instant,
-        messenger: &mut impl ConnectionMessenger<Self::ConnectionEvent>,
-        event: Self::UserEvent,
+        messenger: &mut impl ContextWithSender<SocketEvent>,
+        event: Packet,
     ) {
         self.process_event(time, messenger, event);
     }
@@ -59,7 +54,7 @@ impl Connection for ConnectionImpl {
     fn process_packet(
         &mut self,
         time: Instant,
-        messenger: &mut impl ConnectionMessenger<Self::ConnectionEvent>,
+        messenger: &mut impl ContextWithSender<SocketEvent>,
         payload: &[u8],
     ) {
         if !payload.is_empty() {
@@ -83,8 +78,8 @@ impl Connection for ConnectionImpl {
     fn process_event(
         &mut self,
         time: Instant,
-        messenger: &mut impl ConnectionMessenger<Self::ConnectionEvent>,
-        event: Self::UserEvent,
+        messenger: &mut impl ContextWithSender<SocketEvent>,
+        event: Packet,
     ) {
         self.non_accepted_timeout = None;
         let addr = self.conn.remote_address;
@@ -106,11 +101,7 @@ impl Connection for ConnectionImpl {
 
     /// Processes various connection-related tasks: resend dropped packets, send heartbeat packet, etc...
     /// This function gets called frequently.
-    fn update(
-        &mut self,
-        time: Instant,
-        messenger: &mut impl ConnectionMessenger<Self::ConnectionEvent>,
-    ) {
+    fn update(&mut self, time: Instant, messenger: &mut impl ContextWithSender<SocketEvent>) {
         // resend dropped packets
         for dropped in self.conn.gather_dropped_packets() {
             let packets = self.conn.process_outgoing(
@@ -152,7 +143,7 @@ impl Connection for ConnectionImpl {
     fn before_discarded(
         &mut self,
         _time: Instant,
-        messenger: &mut impl ConnectionMessenger<Self::ConnectionEvent>,
+        messenger: &mut impl ContextWithSender<SocketEvent>,
     ) {
         messenger.send_event(SocketEvent::Timeout(self.conn.remote_address));
     }
@@ -160,7 +151,7 @@ impl Connection for ConnectionImpl {
     fn should_discard(
         &mut self,
         time: Instant,
-        messenger: &mut impl ConnectionMessenger<Self::ConnectionEvent>,
+        messenger: &mut impl ContextWithSender<SocketEvent>,
     ) -> bool {
         // TODO implement
         false
@@ -169,7 +160,7 @@ impl Connection for ConnectionImpl {
 
 // Sends multiple outgoing packets.
 fn send_packets(
-    ctx: &mut impl ConnectionMessenger<SocketEvent>,
+    ctx: &mut impl ContextWithSender<SocketEvent>,
     address: &SocketAddr,
     packets: Result<OutgoingPackets>,
     err_context: &str,

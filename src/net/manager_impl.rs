@@ -1,5 +1,5 @@
 use crate::config::Config;
-use crate::net::{Connection, ConnectionFactory, ConnectionMessenger};
+use crate::net::{events::SocketEvent, ConnectionManager, ContextWithSender};
 use crate::packet::Packet;
 
 use super::{ConnectionImpl, VirtualConnection};
@@ -15,14 +15,14 @@ const TEMPORARY_BAN_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Provides simple DDoS protection by auto disconnecting non accepted connections, and ban them for some time.
 #[derive(Debug)]
-pub struct FactoryImpl {
+pub struct ManagerImpl {
     config: Config,
     temporary_banned: HashMap<SocketAddr, Instant>,
 }
 
-impl FactoryImpl {
+impl ManagerImpl {
     pub fn new(config: Config) -> Self {
-        FactoryImpl {
+        ManagerImpl {
             config,
             temporary_banned: Default::default(),
         }
@@ -48,35 +48,32 @@ impl FactoryImpl {
     }
 }
 
-impl ConnectionFactory for FactoryImpl {
+impl ConnectionManager for ManagerImpl {
+    /// Defines a user event type.
+    type UserEvent = Packet;
+    /// Defines a connection event type.
+    type ConnectionEvent = SocketEvent;
+
     fn process_packet(
         &mut self,
-        time: Instant,
-        messenger: &mut impl ConnectionMessenger<<Self::Connection as Connection>::ConnectionEvent>,
+        messenger: &mut impl ContextWithSender<Self::ConnectionEvent>,
         address: &SocketAddr,
         data: &[u8],
     ) {
-        // TODO implement
     }
 
     fn process_event(
         &mut self,
-        time: Instant,
-        messenger: &mut impl ConnectionMessenger<<Self::Connection as Connection>::ConnectionEvent>,
-        event: <Self::Connection as Connection>::UserEvent,
+        messenger: &mut impl ContextWithSender<Self::ConnectionEvent>,
+        event: Self::UserEvent,
     ) {
-        // TODO implement
     }
 
     fn update_connections(
         &mut self,
-        time: Instant,
-        messenger: &mut impl ConnectionMessenger<<Self::Connection as Connection>::ConnectionEvent>,
+        messenger: &mut impl ContextWithSender<Self::ConnectionEvent>,
     ) {
-        // TODO implement
     }
-
-    type Connection = ConnectionImpl;
 
     // fn address_from_user_event<'s, 'a>(&'s self, event: &'a Packet) -> Option<&'a SocketAddr>
     // where
@@ -127,7 +124,7 @@ impl ConnectionFactory for FactoryImpl {
 
 #[cfg(test)]
 mod tests {
-    use super::{ConnectionFactory, FactoryImpl, NON_ACCEPT_TIMEOUT, TEMPORARY_BAN_TIMEOUT};
+    use super::{ConnectionManager, ManagerImpl, NON_ACCEPT_TIMEOUT, TEMPORARY_BAN_TIMEOUT};
     use crate::packet::Packet;
     use std::net::SocketAddr;
     use std::time::{Duration, Instant};
@@ -145,7 +142,7 @@ mod tests {
 
     #[test]
     fn accepting_local_connection_do_not_set_accept_timeout() {
-        let mut factory = FactoryImpl::new(Default::default());
+        let mut factory = ManagerImpl::new(Default::default());
 
         let conn = factory
             .should_accept_local(Instant::now(), address(), &user_event())
@@ -157,7 +154,7 @@ mod tests {
     #[test]
     fn accepting_remote_connection_sets_accept_timeout() {
         let time = Instant::now();
-        let mut factory = FactoryImpl::new(Default::default());
+        let mut factory = ManagerImpl::new(Default::default());
 
         let conn = factory.should_accept_remote(time, address(), &[]).unwrap();
 
@@ -167,7 +164,7 @@ mod tests {
     #[test]
     fn when_non_accept_timeout_expires_connection_is_discarded_and_banned() {
         let time = Instant::now();
-        let mut factory = FactoryImpl::new(Default::default());
+        let mut factory = ManagerImpl::new(Default::default());
 
         let conn = factory.should_accept_remote(time, address(), &[]).unwrap();
         let time = time + NON_ACCEPT_TIMEOUT + Duration::from_nanos(1);
@@ -182,7 +179,7 @@ mod tests {
     #[test]
     fn accepting_remote_while_banned_returns_none() {
         let time = Instant::now();
-        let mut factory = FactoryImpl::new(Default::default());
+        let mut factory = ManagerImpl::new(Default::default());
 
         factory
             .temporary_banned
@@ -195,7 +192,7 @@ mod tests {
     #[test]
     fn accepting_local_while_banned_removes_ban() {
         let time = Instant::now();
-        let mut factory = FactoryImpl::new(Default::default());
+        let mut factory = ManagerImpl::new(Default::default());
 
         factory
             .temporary_banned

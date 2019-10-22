@@ -254,7 +254,6 @@ impl VirtualConnection {
                     if let Some(packet) = stream.arrange(arranging_header.arranging_id(), payload) {
                         return Ok(IncomingPackets::one(
                             Packet::new(
-                                self.remote_address,
                                 packet,
                                 header.delivery_guarantee(),
                                 OrderingGuarantee::Sequenced(Some(arranging_header.stream_id())),
@@ -268,7 +267,6 @@ impl VirtualConnection {
 
                 return Ok(IncomingPackets::one(
                     Packet::new(
-                        self.remote_address,
                         packet_reader.read_payload(),
                         header.delivery_guarantee(),
                         header.ordering_guarantee(),
@@ -297,7 +295,6 @@ impl VirtualConnection {
 
                                 return Ok(IncomingPackets::one(
                                     Packet::new(
-                                        self.remote_address,
                                         payload.into_boxed_slice(),
                                         header.delivery_guarantee(),
                                         header.ordering_guarantee(),
@@ -336,7 +333,6 @@ impl VirtualConnection {
                         {
                             return Ok(IncomingPackets::one(
                                 Packet::new(
-                                    self.remote_address,
                                     packet,
                                     header.delivery_guarantee(),
                                     OrderingGuarantee::Sequenced(Some(
@@ -368,7 +364,6 @@ impl VirtualConnection {
                                 .map(|(packet, packet_type)| {
                                     (
                                         Packet::new(
-                                            address,
                                             packet,
                                             header.delivery_guarantee(),
                                             OrderingGuarantee::Ordered(Some(
@@ -384,7 +379,6 @@ impl VirtualConnection {
                         let payload = packet_reader.read_payload();
                         return Ok(IncomingPackets::one(
                             Packet::new(
-                                self.remote_address,
                                 payload,
                                 header.delivery_guarantee(),
                                 header.ordering_guarantee(),

@@ -18,7 +18,7 @@ pub enum ConnectionEvent {
 }
 
 /// Provides a reason why the connection was destroyed.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum DestroyReason {
     /// When `SocketManager` decided to destroy a connection for error that arrived from `ConnectionManager`.
     ConnectionError(String),
@@ -36,7 +36,7 @@ pub enum DestroyReason {
 pub enum DisconnectReason {
     /// Disconnect was initiated by the local or remote host
     ClosedByLocalHost,
-    ClosedByRemoteHost,    
+    ClosedByRemoteHost,
     /// Socket manager decided to destroy connection for provided reason
     Destroying(DestroyReason),
 }

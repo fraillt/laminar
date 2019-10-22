@@ -2,22 +2,22 @@ use std::{net::SocketAddr, time::Instant};
 
 use crossbeam_channel::{Receiver, Sender};
 
-use crate::net::{ConnectionManager, FactoryImpl, LinkConditioner};
+use crate::net::{LinkConditioner, ManagerImpl, SocketWithConnections};
 use crate::test_utils::*;
 use crate::{error::Result, Config, Packet, SocketEvent};
 
 /// Provides a similar to the real a `Socket`, but with emulated socket implementation.
 pub struct FakeSocket {
-    handler: ConnectionManager<EmulatedSocket, FactoryImpl>,
+    handler: SocketWithConnections<EmulatedSocket, ManagerImpl>,
 }
 
 impl FakeSocket {
     /// Binds to the socket.
     pub fn bind(network: &NetworkEmulator, addr: SocketAddr, config: Config) -> Result<Self> {
         Ok(Self {
-            handler: ConnectionManager::new(
+            handler: SocketWithConnections::new(
                 network.new_socket(addr)?,
-                FactoryImpl::new(config.clone()),
+                ManagerImpl::new(config.clone()),
                 config,
             ),
         })
