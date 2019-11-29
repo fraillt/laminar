@@ -9,6 +9,9 @@ use super::{
     packet_header::{PacketHeader, PacketHeaderType},
 };
 
+#[derive(Debug, Eq, PartialEq)]
+struct AddressWithConnId(SocketAddr, i64);
+
 #[derive(Debug)]
 pub struct Manager {
     connections: HashMap<SocketAddr, AddressConnection>,
